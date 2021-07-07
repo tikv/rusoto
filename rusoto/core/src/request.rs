@@ -441,9 +441,7 @@ where
             Ok(try_req) => try_req,
         },
     };
-    let resp = try_resp.map_err(|e| HttpDispatchError {
-        message: format!("Error during dispatch: {}", e),
-    })?;
+    let resp = try_resp.map_err(|e| panic!("Error during dispatch: {}", e))?;
     Ok(HttpResponse::from_hyper(resp).await)
 }
 
