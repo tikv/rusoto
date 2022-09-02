@@ -364,12 +364,56 @@ impl ProvideAwsCredentials for DefaultCredentialsProvider {
 /// is as locked down as possible using security best practices for your operating system.
 ///
 /// [credential_process]: https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#sourcing-credentials-from-external-processes
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ChainProvider {
     environment_provider: EnvironmentProvider,
     instance_metadata_provider: InstanceMetadataProvider,
     container_provider: ContainerProvider,
     profile_provider: Option<ProfileProvider>,
+
+    /// The hook function when meeting some error during requesting the chain of key.
+    /// The first argument is the cred provider (chain component).
+    /// The second argument is the error we met.
+    ///
+    /// Note: Making the first argument &str so it should be extendable; making it static
+    /// so it won't be too magic.
+    on_failure: Option<
+        Arc<dyn Fn(ChainComponent, &CredentialsError) -> HandleFailure + Send + Sync + 'static>,
+    >,
+}
+
+impl fmt::Debug for ChainProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChainProvider")
+            .field("environment_provider", &self.environment_provider)
+            .field(
+                "instance_metadata_provider",
+                &self.instance_metadata_provider,
+            )
+            .field("container_provider", &self.container_provider)
+            .field("profile_provider", &self.profile_provider)
+            .finish()
+    }
+}
+
+/// The strategy for handing an error.
+/// Used in the hook `on_failure`.
+pub enum HandleFailure {
+    /// Give up and return the error as is.
+    GiveUp,
+}
+
+/// The identity of its components of the ChainProvider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChainComponent {
+    /// The environment key provider. (from envvar)
+    Environment,
+    /// The profile key provider. (from ~/.aws)
+    Profile,
+    /// The container key provider. (from AWS.)
+    Container,
+    /// The metadata key provider. (from AWS.)
+    Metadata,
 }
 
 impl ChainProvider {
@@ -378,24 +422,43 @@ impl ChainProvider {
         self.instance_metadata_provider.set_timeout(duration);
         self.container_provider.set_timeout(duration);
     }
+
+    /// Set the hook function when meet error.
+    pub fn set_on_failure_hook<H>(&mut self, on_failure: H)
+    where
+        H: Fn(ChainComponent, &CredentialsError) -> HandleFailure + Send + Sync + 'static,
+    {
+        self.on_failure = Some(Arc::new(on_failure))
+    }
+
+    fn handle_error(&self, provider: ChainComponent, err: &CredentialsError) {
+        if let Some(ref handler) = self.on_failure {
+            handler(provider, err);
+        }
+    }
 }
 
 async fn chain_provider_credentials(
     provider: ChainProvider,
 ) -> Result<AwsCredentials, CredentialsError> {
-    if let Ok(creds) = provider.environment_provider.credentials().await {
-        return Ok(creds);
+    use ChainComponent::*;
+    match provider.environment_provider.credentials().await {
+        Ok(creds) => return Ok(creds),
+        Err(err) => provider.handle_error(Environment, &err),
     }
     if let Some(ref profile_provider) = provider.profile_provider {
-        if let Ok(creds) = profile_provider.credentials().await {
-            return Ok(creds);
+        match profile_provider.credentials().await {
+            Ok(creds) => return Ok(creds),
+            Err(err) => provider.handle_error(Profile, &err),
         }
     }
-    if let Ok(creds) = provider.container_provider.credentials().await {
-        return Ok(creds);
+    match provider.container_provider.credentials().await {
+        Ok(creds) => return Ok(creds),
+        Err(err) => provider.handle_error(Container, &err),
     }
-    if let Ok(creds) = provider.instance_metadata_provider.credentials().await {
-        return Ok(creds);
+    match provider.instance_metadata_provider.credentials().await {
+        Ok(creds) => return Ok(creds),
+        Err(err) => provider.handle_error(Metadata, &err),
     }
     Err(CredentialsError::new(
         "Couldn't find AWS credentials in environment, credentials file, or IAM role.",
@@ -417,6 +480,7 @@ impl ChainProvider {
             profile_provider: ProfileProvider::new().ok(),
             instance_metadata_provider: InstanceMetadataProvider::new(),
             container_provider: ContainerProvider::new(),
+            on_failure: None,
         }
     }
 
@@ -427,6 +491,7 @@ impl ChainProvider {
             profile_provider: Some(profile_provider),
             instance_metadata_provider: InstanceMetadataProvider::new(),
             container_provider: ContainerProvider::new(),
+            on_failure: None,
         }
     }
 }
@@ -462,11 +527,30 @@ mod tests {
     use std::fs::{self, File};
     use std::io::Read;
     use std::path::Path;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use crate::test_utils::{is_secret_hidden_behind_asterisks, lock_env, SECRET};
     use quickcheck::quickcheck;
 
     use super::*;
+
+    #[tokio::test]
+    async fn test_chain_error_handling() {
+        let mut chain = ChainProvider::new();
+        let called_cnt = Arc::new(AtomicUsize::default());
+        let counter = called_cnt.clone();
+        chain.set_on_failure_hook(move |_, _| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            HandleFailure::GiveUp
+        });
+        match chain.credentials().await {
+            Err(_) => assert!(called_cnt.load(Ordering::SeqCst) >= 3),
+            Ok(_) => assert!(called_cnt.load(Ordering::SeqCst) > 0,
+                concat!("the test `test_chain_error_handling` cannot be run: we got the key in the env.",
+                " (which is unexpected, please unset envvars providing cred like `AWS_ACCESS_KEY_ID` or ignore this test.)")
+            ),
+        }
+    }
 
     #[test]
     fn default_empty_credentials_are_considered_anonymous() {
