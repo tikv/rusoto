@@ -176,6 +176,19 @@ impl CredentialsError {
             message: message.to_string(),
         }
     }
+
+    /// Merge a string (context) with the current error.
+    fn merge_with_str(&mut self, other: &str) {
+        if !self.message.is_empty() {
+            self.message.push(';');
+        }
+        self.message.push_str(other);
+    }
+
+    /// Merge another error with the current error.
+    fn merge_with(&mut self, other: &Self) {
+        self.merge_with_str(&other.message)
+    }
 }
 
 impl fmt::Display for CredentialsError {
@@ -383,23 +396,29 @@ impl ChainProvider {
 async fn chain_provider_credentials(
     provider: ChainProvider,
 ) -> Result<AwsCredentials, CredentialsError> {
-    if let Ok(creds) = provider.environment_provider.credentials().await {
-        return Ok(creds);
+    let mut err = CredentialsError {
+        message: "Couldn't find AWS credentials in environment, credentials file, or IAM role"
+            .to_owned(),
+    };
+    match provider.environment_provider.credentials().await {
+        Ok(creds) => return Ok(creds),
+        Err(e) => err.merge_with(&e),
     }
     if let Some(ref profile_provider) = provider.profile_provider {
-        if let Ok(creds) = profile_provider.credentials().await {
-            return Ok(creds);
+        match profile_provider.credentials().await {
+            Ok(creds) => return Ok(creds),
+            Err(e) => err.merge_with(&e),
         }
     }
-    if let Ok(creds) = provider.container_provider.credentials().await {
-        return Ok(creds);
+    match provider.container_provider.credentials().await {
+        Ok(creds) => return Ok(creds),
+        Err(e) => err.merge_with(&e),
     }
-    if let Ok(creds) = provider.instance_metadata_provider.credentials().await {
-        return Ok(creds);
+    match provider.instance_metadata_provider.credentials().await {
+        Ok(creds) => return Ok(creds),
+        Err(e) => err.merge_with(&e),
     }
-    Err(CredentialsError::new(
-        "Couldn't find AWS credentials in environment, credentials file, or IAM role.",
-    ))
+    Err(err)
 }
 
 #[async_trait]
@@ -542,6 +561,24 @@ mod tests {
             credentials.expires_at().expect(""),
             DateTime::parse_from_rfc3339("2016-11-18T01:50:39Z").expect("")
         );
+    }
+
+    #[tokio::test]
+    async fn test_chain_error_handling() {
+        let chain = ChainProvider::new();
+
+        match chain.credentials().await {
+            Err(e) => {
+                let cnt = e.message.chars().filter(|x| *x == ';').count();
+                assert!(cnt >= 3, "message: {}", e.message);
+            }
+            Ok(_) => {
+                println!("\
+                the test `test_chain_error_handling` cannot be run: we got the key in the env.\
+                (which is unexpected, please unset envvars providing cred like `AWS_ACCESS_KEY_ID` or ignore this test.)\
+                ")
+            }
+        }
     }
 
     #[cfg(test)]
