@@ -178,7 +178,7 @@ impl CredentialsError {
     }
 
     /// Merge a string (context) with the current error.
-    pub fn merge_with_str(&mut self, other: &str) {
+    fn merge_with_str(&mut self, other: &str) {
         if !self.message.is_empty() {
             self.message.push(';');
         }
@@ -186,7 +186,7 @@ impl CredentialsError {
     }
 
     /// Merge another error with the current error.
-    pub fn merge_with(&mut self, other: &Self) {
+    fn merge_with(&mut self, other: &Self) {
         self.merge_with_str(&other.message)
     }
 }
@@ -397,7 +397,8 @@ async fn chain_provider_credentials(
     provider: ChainProvider,
 ) -> Result<AwsCredentials, CredentialsError> {
     let mut err = CredentialsError {
-        message: "".to_owned(),
+        message: "Couldn't find AWS credentials in environment, credentials file, or IAM role"
+            .to_owned(),
     };
     match provider.environment_provider.credentials().await {
         Ok(creds) => return Ok(creds),
@@ -417,9 +418,6 @@ async fn chain_provider_credentials(
         Ok(creds) => return Ok(creds),
         Err(e) => err.merge_with(&e),
     }
-    err.merge_with_str(
-        "Couldn't find AWS credentials in environment, credentials file, or IAM role.",
-    );
     Err(err)
 }
 
@@ -575,8 +573,10 @@ mod tests {
                 assert!(cnt >= 3, "message: {}", e.message);
             }
             Ok(_) => {
-                println!(concat!("the test `test_chain_error_handling` cannot be run: we got the key in the env.",
-                " (which is unexpected, please unset envvars providing cred like `AWS_ACCESS_KEY_ID` or ignore this test.)"))
+                println!("\
+                the test `test_chain_error_handling` cannot be run: we got the key in the env.\
+                (which is unexpected, please unset envvars providing cred like `AWS_ACCESS_KEY_ID` or ignore this test.)\
+                ")
             }
         }
     }
