@@ -105,6 +105,15 @@ impl Client {
     ) -> Result<HttpResponse, SignAndDispatchError> {
         self.inner.sign_and_dispatch(request, None).await
     }
+
+    /// Fetch credentials, sign the request and dispatch it with timeout.
+    pub async fn sign_and_dispatch_timeout(
+        &self,
+        request: SignedRequest,
+        timeout: Duration,
+    ) -> Result<HttpResponse, SignAndDispatchError> {
+        self.inner.sign_and_dispatch(request, Some(timeout)).await
+    }
 }
 
 /// Error that occurs during `sign_and_dispatch`
