@@ -19,17 +19,18 @@ use std::time::Duration;
 
 use base64;
 use bytes::Bytes;
-use chrono::{DateTime, Utc, NaiveDate};
-use digest::Digest;
+use chrono::{DateTime, NaiveDate, Utc};
 use hex;
-use hmac::{Hmac, Mac, NewMac};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
 use hyper::Body;
 use log::{debug, log_enabled, Level::Debug};
-use md5::Md5;
+use openssl::{
+    hash::{hash, MessageDigest},
+    pkey::PKey,
+    sign::Signer,
+};
 use percent_encoding::{percent_decode, utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
-use sha2::Sha256;
 
 use crate::credential::AwsCredentials;
 use crate::region::Region;
@@ -158,7 +159,7 @@ impl SignedRequest {
             return;
         }
         if let Some(SignedRequestPayload::Buffer(ref payload)) = self.payload {
-            let digest = Md5::digest(payload);
+            let digest = hash(MessageDigest::md5(), payload).expect("failed to hash with md5");
             self.add_header("Content-MD5", &base64::encode(&*digest));
         }
     }
@@ -585,10 +586,14 @@ fn digest_payload(payload: &[u8]) -> (String, usize) {
 }
 
 #[inline]
-fn hmac(secret: &[u8], message: &[u8]) -> Hmac<Sha256> {
-    let mut hmac = Hmac::<Sha256>::new_varkey(secret).expect("failed to create hmac");
-    hmac.update(message);
-    hmac
+fn hmac(secret: &[u8], message: &[u8]) -> Vec<u8> {
+    let key = PKey::hmac(secret).expect("failed to create hmac");
+    let mut signer =
+        Signer::new(MessageDigest::sha256(), &key).expect("failed to create sha256 signer");
+    signer
+        .update(message)
+        .expect("failed to update the message");
+    signer.sign_to_vec().expect("failed to sign the message")
 }
 
 /// Takes a message and signs it using AWS secret, time, region keys and service keys.
@@ -600,23 +605,11 @@ fn sign_string(
     service: &str,
 ) -> String {
     let date_str = date.format("%Y%m%d").to_string();
-    let date_hmac = hmac(format!("AWS4{}", secret).as_bytes(), date_str.as_bytes())
-        .finalize()
-        .into_bytes();
-    let region_hmac = hmac(date_hmac.as_ref(), region.as_bytes())
-        .finalize()
-        .into_bytes();
-    let service_hmac = hmac(region_hmac.as_ref(), service.as_bytes())
-        .finalize()
-        .into_bytes();
-    let signing_hmac = hmac(service_hmac.as_ref(), b"aws4_request")
-        .finalize()
-        .into_bytes();
-    hex::encode(
-        hmac(signing_hmac.as_ref(), string_to_sign.as_bytes())
-            .finalize()
-            .into_bytes(),
-    )
+    let date_hmac = hmac(format!("AWS4{}", secret).as_bytes(), date_str.as_bytes());
+    let region_hmac = hmac(date_hmac.as_ref(), region.as_bytes());
+    let service_hmac = hmac(region_hmac.as_ref(), service.as_bytes());
+    let signing_hmac = hmac(service_hmac.as_ref(), b"aws4_request");
+    hex::encode(hmac(signing_hmac.as_ref(), string_to_sign.as_bytes()).as_slice())
 }
 
 /// Mark string as AWS4-HMAC-SHA256 hashed
@@ -761,8 +754,8 @@ pub fn decode_uri(uri: &str) -> String {
 }
 
 fn to_hexdigest<T: AsRef<[u8]>>(t: T) -> String {
-    let h = Sha256::digest(t.as_ref());
-    hex::encode(h)
+    let digest = hash(MessageDigest::sha256(), t.as_ref()).expect("failed to hash with sha256");
+    hex::encode(digest)
 }
 
 fn extract_endpoint_path(endpoint: &str) -> Option<&str> {
