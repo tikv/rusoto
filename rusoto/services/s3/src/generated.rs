@@ -20280,7 +20280,7 @@ impl S3 for S3Client {
         let mut writer = EventWriter::new(Vec::new());
         DeleteSerializer::serialize(&mut writer, "Delete", &input.delete);
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22403,7 +22403,7 @@ impl S3 for S3Client {
         } else {
             request.set_payload(Some(Vec::new()));
         }
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22486,7 +22486,7 @@ impl S3 for S3Client {
             &input.cors_configuration,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22528,7 +22528,7 @@ impl S3 for S3Client {
             &input.server_side_encryption_configuration,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22655,7 +22655,7 @@ impl S3 for S3Client {
         } else {
             request.set_payload(Some(Vec::new()));
         }
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22700,7 +22700,7 @@ impl S3 for S3Client {
         } else {
             request.set_payload(Some(Vec::new()));
         }
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22742,7 +22742,7 @@ impl S3 for S3Client {
             &input.bucket_logging_status,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22825,7 +22825,7 @@ impl S3 for S3Client {
             &input.notification_configuration,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22910,7 +22910,7 @@ impl S3 for S3Client {
             &input.ownership_controls,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22950,7 +22950,7 @@ impl S3 for S3Client {
         params.put_key("policy");
         request.set_params(params);
         request.set_payload(Some(input.policy.into_bytes()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -22993,7 +22993,7 @@ impl S3 for S3Client {
             &input.replication_configuration,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23035,7 +23035,7 @@ impl S3 for S3Client {
             &input.request_payment_configuration,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23073,7 +23073,7 @@ impl S3 for S3Client {
         let mut writer = EventWriter::new(Vec::new());
         TaggingSerializer::serialize(&mut writer, "Tagging", &input.tagging);
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23116,7 +23116,7 @@ impl S3 for S3Client {
             &input.versioning_configuration,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23158,7 +23158,7 @@ impl S3 for S3Client {
             &input.website_configuration,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23340,7 +23340,7 @@ impl S3 for S3Client {
         } else {
             request.set_payload(Some(Vec::new()));
         }
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23392,7 +23392,7 @@ impl S3 for S3Client {
         } else {
             request.set_payload(Some(Vec::new()));
         }
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23443,7 +23443,7 @@ impl S3 for S3Client {
         } else {
             request.set_payload(Some(Vec::new()));
         }
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23499,7 +23499,7 @@ impl S3 for S3Client {
         } else {
             request.set_payload(Some(Vec::new()));
         }
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23542,7 +23542,7 @@ impl S3 for S3Client {
         let mut writer = EventWriter::new(Vec::new());
         TaggingSerializer::serialize(&mut writer, "Tagging", &input.tagging);
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self
@@ -23586,7 +23586,7 @@ impl S3 for S3Client {
             &input.public_access_block_configuration,
         );
         request.set_payload(Some(writer.into_inner()));
-        request.maybe_set_content_md5_header();
+        request.maybe_set_content_md5_header()?;
         request.set_hostname(Some(hostname));
 
         let mut response = self

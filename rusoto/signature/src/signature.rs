@@ -14,6 +14,7 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fmt;
+use std::io::Error;
 use std::str;
 use std::time::Duration;
 
@@ -154,14 +155,15 @@ impl SignedRequest {
     ///
     /// Has no effect if the payload is not set, or is not a buffer. Will not
     /// override an existing value for the `Content-MD5` header.
-    pub fn maybe_set_content_md5_header(&mut self) {
+    pub fn maybe_set_content_md5_header(&mut self) -> Result<(), Error> {
         if self.headers.contains_key("Content-MD5") {
-            return;
+            return Ok(());
         }
         if let Some(SignedRequestPayload::Buffer(ref payload)) = self.payload {
-            let digest = hash(MessageDigest::md5(), payload).expect("failed to hash with md5");
+            let digest = hash(MessageDigest::md5(), payload)?;
             self.add_header("Content-MD5", &base64::encode(&*digest));
         }
+        Ok(())
     }
 
     /// Returns the current HTTP method
@@ -282,10 +284,10 @@ impl SignedRequest {
         creds: &AwsCredentials,
         expires_in: &Duration,
         should_sha256_sign_payload: bool,
-    ) -> String {
+    ) -> Result<String, Error> {
         debug!("Presigning request URL");
 
-        self.sign(creds);
+        self.sign(creds)?;
         let hostname = self.hostname();
 
         let current_time = Utc::now();
@@ -347,7 +349,7 @@ impl SignedRequest {
             match self.payload {
                 None => Cow::Borrowed(EMPTY_SHA256_HASH),
                 Some(SignedRequestPayload::Buffer(ref payload)) => {
-                    let (digest, _len) = digest_payload(&payload);
+                    let (digest, _len) = digest_payload(&payload)?;
                     Cow::Owned(digest)
                 }
                 Some(SignedRequestPayload::Stream(ref _stream)) => Cow::Borrowed(UNSIGNED_PAYLOAD),
@@ -369,7 +371,7 @@ impl SignedRequest {
         debug!("canonical_request: {:?}", canonical_request);
 
         // use the hashed canonical request to build the string to sign
-        let hashed_canonical_request = to_hexdigest(&canonical_request);
+        let hashed_canonical_request = to_hexdigest(&canonical_request)?;
 
         debug!("hashed_canonical_request: {:?}", hashed_canonical_request);
 
@@ -392,17 +394,17 @@ impl SignedRequest {
             current_time.date().naive_utc(),
             &self.region.name(),
             &self.service,
-        );
+        )?;
         self.params
             .insert("X-Amz-Signature".into(), signature.into());
 
-        format!(
+        Ok(format!(
             "{}://{}{}?{}",
             self.scheme(),
             hostname,
             self.canonical_uri,
             build_canonical_query_string(&self.params)
-        )
+        ))
     }
 
     /// Complement SignedRequest by ensuring the following HTTP headers are set accordingly:
@@ -436,7 +438,7 @@ impl SignedRequest {
 
     /// Signs the request using Amazon Signature version 4 to verify identity.
     /// Authorization header uses AWS4-HMAC-SHA256 for signing.
-    pub fn sign(&mut self, creds: &AwsCredentials) {
+    pub fn sign(&mut self, creds: &AwsCredentials) -> Result<(), Error> {
         self.complement();
         let date = Utc::now();
         self.remove_header("x-amz-date");
@@ -450,7 +452,7 @@ impl SignedRequest {
         let digest = match self.payload {
             None => Cow::Borrowed(EMPTY_SHA256_HASH),
             Some(SignedRequestPayload::Buffer(ref payload)) => {
-                let (digest, _) = digest_payload(&payload);
+                let (digest, _) = digest_payload(&payload)?;
                 Cow::Owned(digest)
             }
             Some(SignedRequestPayload::Stream(_)) => Cow::Borrowed(UNSIGNED_PAYLOAD),
@@ -481,7 +483,7 @@ impl SignedRequest {
         );
 
         // use the hashed canonical request to build the string to sign
-        let hashed_canonical_request = to_hexdigest(&canonical_request);
+        let hashed_canonical_request = to_hexdigest(&canonical_request)?;
         let scope = format!(
             "{}/{}/{}/aws4_request",
             date.format("%Y%m%d"),
@@ -497,7 +499,7 @@ impl SignedRequest {
             date.date().naive_utc(),
             &self.region_for_service(),
             &self.service,
-        );
+        )?;
 
         // build the actual auth header
         let auth_header = format!(
@@ -509,6 +511,7 @@ impl SignedRequest {
         );
         self.remove_header("authorization");
         self.add_header("authorization", &auth_header);
+        Ok(())
     }
 }
 
@@ -579,21 +582,20 @@ impl TryInto<Request<Body>> for SignedRequest {
 }
 
 /// Convert payload from Char array to useable <payload, len> format.
-fn digest_payload(payload: &[u8]) -> (String, usize) {
-    let digest = to_hexdigest(payload);
+fn digest_payload(payload: &[u8]) -> Result<(String, usize), Error> {
+    let digest = to_hexdigest(payload)?;
     let len = payload.len();
-    (digest, len)
+    Ok((digest, len))
 }
 
 #[inline]
-fn hmac(secret: &[u8], message: &[u8]) -> Vec<u8> {
-    let key = PKey::hmac(secret).expect("failed to create hmac");
+fn hmac(secret: &[u8], message: &[u8]) -> Result<Vec<u8>, Error> {
+    let key = PKey::hmac(secret)?;
     let mut signer =
-        Signer::new(MessageDigest::sha256(), &key).expect("failed to create sha256 signer");
+        Signer::new(MessageDigest::sha256(), &key)?;
     signer
-        .update(message)
-        .expect("failed to update the message");
-    signer.sign_to_vec().expect("failed to sign the message")
+        .update(message)?;
+    Ok(signer.sign_to_vec()?)
 }
 
 /// Takes a message and signs it using AWS secret, time, region keys and service keys.
@@ -603,13 +605,13 @@ fn sign_string(
     date: NaiveDate,
     region: &str,
     service: &str,
-) -> String {
+) -> Result<String, Error> {
     let date_str = date.format("%Y%m%d").to_string();
-    let date_hmac = hmac(format!("AWS4{}", secret).as_bytes(), date_str.as_bytes());
-    let region_hmac = hmac(date_hmac.as_ref(), region.as_bytes());
-    let service_hmac = hmac(region_hmac.as_ref(), service.as_bytes());
-    let signing_hmac = hmac(service_hmac.as_ref(), b"aws4_request");
-    hex::encode(hmac(signing_hmac.as_ref(), string_to_sign.as_bytes()).as_slice())
+    let date_hmac = hmac(format!("AWS4{}", secret).as_bytes(), date_str.as_bytes())?;
+    let region_hmac = hmac(date_hmac.as_ref(), region.as_bytes())?;
+    let service_hmac = hmac(region_hmac.as_ref(), service.as_bytes())?;
+    let signing_hmac = hmac(service_hmac.as_ref(), b"aws4_request")?;
+    Ok(hex::encode(hmac(signing_hmac.as_ref(), string_to_sign.as_bytes())?.as_slice()))
 }
 
 /// Mark string as AWS4-HMAC-SHA256 hashed
@@ -753,9 +755,9 @@ pub fn decode_uri(uri: &str) -> String {
     }
 }
 
-fn to_hexdigest<T: AsRef<[u8]>>(t: T) -> String {
-    let digest = hash(MessageDigest::sha256(), t.as_ref()).expect("failed to hash with sha256");
-    hex::encode(digest)
+fn to_hexdigest<T: AsRef<[u8]>>(t: T) -> Result<String, Error> {
+    let digest = hash(MessageDigest::sha256(), t.as_ref())?;
+    Ok(hex::encode(digest))
 }
 
 fn extract_endpoint_path(endpoint: &str) -> Option<&str> {
@@ -855,7 +857,7 @@ mod tests {
             "foo_secret_key",
             None,
             None,
-        ));
+        )).unwrap();
 
         let req: http::Request<Body> = request.try_into().unwrap();
         let expected_uri = Uri::from_static("https://sqs.us-east-1.amazonaws.com");
@@ -877,7 +879,7 @@ mod tests {
             "foo_secret_key",
             None,
             None,
-        ));
+        )).unwrap();
         assert_eq!(
             "/path%20with%20spaces%3A%20the%20sequel",
             request.canonical_uri()
@@ -959,7 +961,7 @@ mod tests {
             date,
             "us-west-1",
             "s3",
-        );
+        ).unwrap();
         assert_eq!(
             signature_foo,
             "74d97a931fb073b276cdb5e5731374b72778cdd29f0764a51dafab99d3e41130".to_string()
@@ -970,7 +972,7 @@ mod tests {
             date,
             "us-west-1",
             "s3",
-        );
+        ).unwrap();
         assert_eq!(
             signature_bar,
             "d767b8a0bc0246f8093953484857d2fd7f43e984377102eede37b0a8dae3d82c".to_string()
@@ -1093,7 +1095,7 @@ mod tests {
             "foo_secret_key",
             None,
             None,
-        ));
+        )).unwrap();
 
         let authorization_headers = request.headers.get("authorization").unwrap();
         let authorization_header = authorization_headers[0].clone();

@@ -233,7 +233,7 @@ fn generate_payload_serialization(service: &Service<'_>, operation: &Operation) 
     }
 
     if operation.http_checksum_required.unwrap_or(false) {
-        parts.push("request.maybe_set_content_md5_header();".to_owned());
+        parts.push("request.maybe_set_content_md5_header().unwrap();".to_owned());
     }
 
     Some(parts.join("\n"))

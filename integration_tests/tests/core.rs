@@ -18,7 +18,7 @@ async fn get_caller_identity_presigned() {
     request.set_params(params);
     request.add_header("x-test-header", "foobar");
     let url =
-        request.generate_presigned_url(&credentials, &std::time::Duration::from_secs(60), true);
+        request.generate_presigned_url(&credentials, &std::time::Duration::from_secs(60), true).unwrap();
 
     let client = reqwest::Client::new();
     let response = client
