@@ -166,7 +166,8 @@ where
         if credentials.is_anonymous() {
             request.complement();
         } else {
-            request.sign(&credentials);
+            request.sign(&credentials)
+                .map_err(|e| SignAndDispatchError::Credentials(CredentialsError::from(e)))?;
         }
     } else {
         request.complement();

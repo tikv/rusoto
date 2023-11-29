@@ -126,3 +126,9 @@ impl fmt::Display for InvalidDnsNameError {
         write!(f, "{}", self.message)
     }
 }
+
+impl From<io::Error> for InvalidDnsNameError {
+    fn from(err: io::Error) -> InvalidDnsNameError {
+        InvalidDnsNameError::new(err.to_string())
+    }
+}

@@ -125,7 +125,7 @@ impl PreSignedRequest for GetObjectRequest {
 
         request.set_params(params);
         request.set_hostname(Some(hostname));
-        Ok(request.generate_presigned_url(credentials, &option.expires_in, false))
+        Ok(request.generate_presigned_url(credentials, &option.expires_in, false)?)
     }
 }
 
@@ -179,7 +179,7 @@ impl PreSignedRequest for PutObjectRequest {
         }
 
         request.set_hostname(Some(hostname));
-        Ok(request.generate_presigned_url(credentials, &option.expires_in, false))
+        Ok(request.generate_presigned_url(credentials, &option.expires_in, false)?)
     }
 }
 
@@ -208,7 +208,7 @@ impl PreSignedRequest for DeleteObjectRequest {
 
         request.set_params(params);
         request.set_hostname(Some(hostname));
-        Ok(request.generate_presigned_url(credentials, &option.expires_in, false))
+        Ok(request.generate_presigned_url(credentials, &option.expires_in, false)?)
     }
 }
 
@@ -239,7 +239,7 @@ impl PreSignedRequest for UploadPartRequest {
 
         request.set_hostname(Some(hostname));
 
-        Ok(request.generate_presigned_url(credentials, &option.expires_in, false))
+        Ok(request.generate_presigned_url(credentials, &option.expires_in, false)?)
     }
 }
 
