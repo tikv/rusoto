@@ -10,13 +10,16 @@ on:
       - master
       - cse
 
+env:
+  CSE_RUST_VERSION: 'nightly-2022-11-15'
+
 jobs:
   unit_tests:
     name: Unit tests
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        rust: [stable, beta, nightly]
+        os: [ubuntu-latest]
+        rust: [stable, $CSE_RUST_VERSION]
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.rust == 'nightly' }}
     steps:
@@ -42,8 +45,8 @@ jobs:
     name: Integration test compilation check
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        rust: [stable, beta, nightly]
+        os: [ubuntu-latest]
+        rust: [stable, $CSE_RUST_VERSION]
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.rust == 'nightly' }}
     steps:
@@ -70,7 +73,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        rust: [stable, beta, nightly]
+        rust: [stable, $CSE_RUST_VERSION]
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.rust == 'nightly' }}
     steps:
@@ -96,8 +99,8 @@ jobs:
     name: Rustls unit tests
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        rust: [stable, beta, nightly]
+        os: [ubuntu-latest]
+        rust: [stable, $CSE_RUST_VERSION]
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.rust == 'nightly' }}
     steps:
@@ -123,7 +126,8 @@ jobs:
     name: Crate generation
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
+        os: [ubuntu-latest]
+        rust: [stable, $CSE_RUST_VERSION]
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout
@@ -143,7 +147,7 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Generate crates
-      run: make generate
+      run: RUST_VERSION=$CSE_RUST_VERSION make generate
 
   struct_serialize_feature_test:
     name: Serialize Struct Feature
@@ -162,7 +166,7 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Run Checks
-      run: make serialize_structs_limited_test
+      run: RUST_VERSION=$CSE_RUST_VERSION make serialize_structs_limited_test
 
   skeptic:
     name: Skeptic tests
@@ -181,7 +185,7 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Skeptic Test
-      run: make skeptical
+      run: RUST_VERSION=$CSE_RUST_VERSION make skeptical
 
   s3_and_crategen:
     name: Test S3 like services and check generated files
@@ -202,4 +206,4 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Test S3 like services and check generated files
-      run: ci/run.sh
+      run: RUST_VERSION=$CSE_RUST_VERSION ci/run.sh
