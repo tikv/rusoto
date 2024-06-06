@@ -26,7 +26,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: $RUST_VERSION
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -51,7 +51,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: $RUST_VERSION
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -76,7 +76,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: $RUST_VERSION
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -101,7 +101,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: $RUST_VERSION
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -128,7 +128,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: $RUST_VERSION
+        rust-version: ${{ env.RUST_VERSION }}
         components: rustfmt
     - name: Cache
       uses: actions/cache@v2
@@ -150,7 +150,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: $RUST_VERSION
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -171,7 +171,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: $RUST_VERSION
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -192,7 +192,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: $RUST_VERSION
+        rust-version: ${{ env.RUST_VERSION }}
         components: rustfmt
     - name: Cache
       uses: actions/cache@v2
