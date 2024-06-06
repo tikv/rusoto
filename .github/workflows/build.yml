@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - master
+      - cse
   pull_request:
     branches:
       - master
+      - cse
 
 jobs:
   unit_tests:
