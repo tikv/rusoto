@@ -1,4 +1,4 @@
-use rusoto_credential::{InstanceMetadataProvider, ProvideAwsCredentials};
+use rusoto_credential::{InstanceMetadataProvider, ProvideAwsCredentials, IMDSVersion};
 use std::time::Duration;
 
 // This test is marked ignored because it requires special setup.
@@ -6,10 +6,16 @@ use std::time::Duration;
 #[tokio::test]
 #[ignore]
 async fn it_fetches_basic_role() {
+    fetches_basic_role_impl(IMDSVersion::V1).await;
+    fetches_basic_role_impl(IMDSVersion::V2).await;
+}
+
+async fn fetches_basic_role_impl(ver: IMDSVersion) {
     // set env vars to point to local provider
     let mut provider = InstanceMetadataProvider::new();
     provider.set_timeout(Duration::from_secs(5));
     provider.set_ip_addr_with_port("127.0.0.1", "8080");
+    provider.set_version(ver);
 
     let creds = provider.credentials().await.expect("credentials");
 

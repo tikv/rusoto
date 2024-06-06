@@ -14,6 +14,7 @@ pub use crate::profile::ProfileProvider;
 pub use crate::secrets::Secret;
 pub use crate::static_provider::StaticProvider;
 pub use crate::variable::Variable;
+pub use crate::instance_metadata::IMDSVersion;
 
 pub mod claims;
 mod container;

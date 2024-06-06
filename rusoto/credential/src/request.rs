@@ -21,8 +21,17 @@ impl HttpClient {
         }
     }
 
-    pub async fn get(&self, uri: Uri, timeout: Duration) -> Result<String, IoError> {
-        match Request::get(uri).body(Body::empty()) {
+    pub async fn get(
+        &self,
+        uri: Uri,
+        timeout: Duration,
+        ec2_metadata_token: Option<&str>,
+    ) -> Result<String, IoError> {
+        let mut builder = Request::get(uri);
+        if let Some(token) = ec2_metadata_token {
+            builder = builder.header("X-aws-ec2-metadata-token", token);
+        }
+        match builder.body(Body::empty()) {
             Ok(request) => self.request(request, timeout).await,
             Err(err) => Err(IoError::new(
                 ErrorKind::Other,
@@ -46,8 +55,16 @@ impl HttpClient {
                     })?;
                     text.extend(chunk.to_vec());
                 }
-                String::from_utf8(text)
-                    .map_err(|_| IoError::new(ErrorKind::InvalidData, "Non UTF-8 Data returned"))
+                let body_str = String::from_utf8(text)
+                    .map_err(|_| IoError::new(ErrorKind::InvalidData, "Non UTF-8 Data returned"))?;
+                if resp.status().is_success() {
+                    Ok(body_str)
+                } else {
+                    Err(IoError::new(
+                        ErrorKind::Other,
+                        format!("Response with error: {}: {}", resp.status(), body_str),
+                    ))
+                }
             }
         }
     }
