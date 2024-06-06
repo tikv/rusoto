@@ -185,8 +185,7 @@ async fn list_multipart_upload_happy_path() {
 #[tokio::test]
 async fn list_multipart_upload_parts_happy_path() {
     let mock = MockRequestDispatcher::with_status(200)
-        .with_body(r#"
-        <?xml version="1.0" encoding="UTF-8"?>
+        .with_body(r#"<?xml version="1.0" encoding="UTF-8"?>
         <ListPartsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
             <Bucket>rusoto1440826511</Bucket>
             <Key>testfile.zip</Key>
@@ -274,8 +273,7 @@ async fn list_multipart_upload_parts_happy_path() {
 #[tokio::test]
 async fn list_multipart_uploads_no_uploads() {
     let mock = MockRequestDispatcher::with_status(200).with_body(
-        r#"
-        <?xml version="1.0" encoding="UTF-8"?>
+        r#"<?xml version="1.0" encoding="UTF-8"?>
         <ListMultipartUploadsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
             <Bucket>rusoto1440826568</Bucket>
             <KeyMarker></KeyMarker>
@@ -306,8 +304,7 @@ fn bench_parse_list_buckets_response(b: &mut Bencher) {
     let mut rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
     let mock = MockRequestDispatcher::with_status(200)
         .with_body(
-            r#"
-        <?xml version="1.0" encoding="UTF-8"?>
+            r#"<?xml version="1.0" encoding="UTF-8"?>
         <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01">
             <Owner>
             <ID>bcaf1ffd86f461ca5fb16fd081034f</ID>
@@ -344,8 +341,7 @@ fn bench_parse_list_buckets_response(b: &mut Bencher) {
 async fn should_parse_sample_list_buckets_response() {
     let mock = MockRequestDispatcher::with_status(200)
         .with_body(
-            r#"
-        <?xml version="1.0" encoding="UTF-8"?>
+            r#"<?xml version="1.0" encoding="UTF-8"?>
         <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01">
             <Owner>
             <ID>bcaf1ffd86f461ca5fb16fd081034f</ID>
