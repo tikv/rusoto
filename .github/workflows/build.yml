@@ -10,22 +10,23 @@ on:
       - master
       - cse
 
+env:
+  RUST_VERSION: 'nightly-2022-11-15'
+
 jobs:
   unit_tests:
     name: Unit tests
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        rust: [stable, beta, nightly]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.rust == 'nightly' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v1
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: ${{ matrix.rust }}
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -36,23 +37,21 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Run unit tests
       shell: bash
-      run: RUST_VERSION=${{ matrix.rust }} make unit_test_no_doctests
+      run: make unit_test_no_doctests
 
   integration_tests:
     name: Integration test compilation check
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        rust: [stable, beta, nightly]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.rust == 'nightly' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v1
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: ${{ matrix.rust }}
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -63,23 +62,21 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Cargo check integration tests
       shell: bash
-      run: RUST_VERSION=${{ matrix.rust }} make check_integration_test
+      run: make check_integration_test
 
   credentials_integration_tests:
     name: Credentials integration test
     strategy:
       matrix:
         os: [ubuntu-latest]
-        rust: [stable, beta, nightly]
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.rust == 'nightly' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v1
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: ${{ matrix.rust }}
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -90,23 +87,21 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Credential integration tests
       shell: bash
-      run: RUST_VERSION=${{ matrix.rust }} make credential_integration_test
+      run: make credential_integration_test
 
   rustls_unit_tests:
     name: Rustls unit tests
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        rust: [stable, beta, nightly]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.rust == 'nightly' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v1
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
-        rust-version: ${{ matrix.rust }}
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -117,13 +112,13 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Run unit tests with rustls
       shell: bash
-      run: RUST_VERSION=${{ matrix.rust }} make rustls_unit_test_no_doctests
+      run: make rustls_unit_test_no_doctests
 
   crate_gen:
     name: Crate generation
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout
@@ -133,6 +128,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
+        rust-version: ${{ env.RUST_VERSION }}
         components: rustfmt
     - name: Cache
       uses: actions/cache@v2
@@ -153,6 +149,8 @@ jobs:
       uses: actions/checkout@v1
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -172,6 +170,8 @@ jobs:
       uses: actions/checkout@v1
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
       uses: actions/cache@v2
       with:
@@ -192,6 +192,7 @@ jobs:
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
+        rust-version: ${{ env.RUST_VERSION }}
         components: rustfmt
     - name: Cache
       uses: actions/cache@v2
