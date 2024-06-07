@@ -1,4 +1,4 @@
-use rusoto_credential::{InstanceMetadataProvider, ProvideAwsCredentials, IMDSVersion};
+use rusoto_credential::{IMDSVersion, InstanceMetadataProvider, ProvideAwsCredentials};
 use std::time::Duration;
 
 // This test is marked ignored because it requires special setup.
