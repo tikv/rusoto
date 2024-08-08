@@ -27,13 +27,48 @@ const ROLE_JSON: &str = r#"{
   "Expiration" : "2015-08-04T06:32:37Z"
 }"#;
 
+const TOKEN: &[u8] = b"toKEn";
+
+const TOKEN_HEADER: &str = "X-aws-ec2-metadata-token";
+
+fn check_token(req: &Request<Body>) -> bool {
+    if let Some(v) = req.headers().get(TOKEN_HEADER) {
+        return v.as_bytes() == TOKEN;
+    }
+    true
+}
+
 async fn handle(req: Request<Body>) -> Response<Body> {
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/latest/meta-data/iam/security-credentials/") => {
+            if !check_token(&req) {
+                return Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .body(Body::from("invalid token"))
+                    .unwrap();
+            }
             Response::new(Body::from("testrole"))
         }
         (&Method::GET, "/latest/meta-data/iam/security-credentials/testrole") => {
+            if !check_token(&req) {
+                return Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .body(Body::from("invalid token"))
+                    .unwrap();
+            }
             Response::new(Body::from(ROLE_JSON))
+        }
+        (&Method::PUT, "/latest/api/token") => {
+            if !req
+                .headers()
+                .contains_key("X-aws-ec2-metadata-token-ttl-seconds")
+            {
+                return Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(Body::from("missing header"))
+                    .unwrap();
+            }
+            Response::new(Body::from(TOKEN))
         }
         _ => Response::builder()
             .status(StatusCode::BAD_REQUEST)

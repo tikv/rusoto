@@ -9,6 +9,7 @@
 
 pub use crate::container::ContainerProvider;
 pub use crate::environment::EnvironmentProvider;
+pub use crate::instance_metadata::IMDSVersion;
 pub use crate::instance_metadata::InstanceMetadataProvider;
 pub use crate::profile::ProfileProvider;
 pub use crate::secrets::Secret;
