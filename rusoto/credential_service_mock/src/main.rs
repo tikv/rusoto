@@ -27,13 +27,13 @@ const ROLE_JSON: &str = r#"{
   "Expiration" : "2015-08-04T06:32:37Z"
 }"#;
 
-const TOKEN: &str = "toKEn";
+const TOKEN: &[u8] = b"toKEn";
 
 const TOKEN_HEADER: &str = "X-aws-ec2-metadata-token";
 
 fn check_token(req: &Request<Body>) -> bool {
     if let Some(v) = req.headers().get(TOKEN_HEADER) {
-        return String::from_utf8_lossy(v.as_bytes()).as_ref() == TOKEN;
+        return v.as_bytes() == TOKEN;
     }
     true
 }

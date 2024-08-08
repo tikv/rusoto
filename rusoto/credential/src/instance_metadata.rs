@@ -62,7 +62,7 @@ pub struct InstanceMetadataProvider {
 
 impl InstanceMetadataProvider {
     /// Create a new provider with the given handle.
-    /// Use IDMSv2 as default, as IDMSv1 may be disabled.
+    /// Use IMDSv2 as default, as IMDSv1 may be disabled.
     pub fn new() -> Self {
         InstanceMetadataProvider {
             client: HttpClient::new(),
