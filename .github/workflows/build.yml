@@ -11,7 +11,7 @@ on:
       - cse
 
 env:
-  RUST_VERSION: 'nightly-2022-11-15'
+  RUST_VERSION: 'nightly-2026-01-30'
 
 jobs:
   unit_tests:
@@ -22,13 +22,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -47,13 +47,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -72,13 +72,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -97,13 +97,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -122,7 +122,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Set up Rust
@@ -131,7 +131,7 @@ jobs:
         rust-version: ${{ env.RUST_VERSION }}
         components: rustfmt
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -146,13 +146,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -167,13 +167,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ env.RUST_VERSION }}
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -188,14 +188,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
     - name: Set up Rust
       uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ env.RUST_VERSION }}
         components: rustfmt
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry

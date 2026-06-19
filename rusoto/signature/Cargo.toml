@@ -46,5 +46,8 @@ serde_json = "1"
 serde_test = "1"
 tokio = { version = "1.0", features = ["io-util"] }
 
+[features]
+unstable = []
+
 [package.metadata.docs.rs]
 targets = []

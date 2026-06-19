@@ -42,7 +42,7 @@ pub struct XmlResponse<'b> {
 }
 
 impl<'b> XmlResponse<'b> {
-    pub fn new(stack: Peekable<Events<&'b [u8]>>) -> XmlResponse {
+    pub fn new(stack: Peekable<Events<&'b [u8]>>) -> XmlResponse<'b> {
         XmlResponse { xml_stack: stack }
     }
 }

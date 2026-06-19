@@ -361,7 +361,9 @@ mod tests {
         s: &str,
     ) -> Result<
         B,
-        <&mut serde_json::de::Deserializer<serde_json::de::StrRead> as serde::Deserializer>::Error,
+        <&mut serde_json::de::Deserializer<serde_json::de::StrRead<'_>> as serde::Deserializer<
+            '_,
+        >>::Error,
     > {
         let reader = serde_json::de::StrRead::new(s);
         let mut deserializer = serde_json::de::Deserializer::new(reader);
@@ -381,7 +383,9 @@ mod tests {
         s: &str,
     ) -> Result<
         B,
-        <&mut serde_json::de::Deserializer<serde_json::de::StrRead> as serde::Deserializer>::Error,
+        <&mut serde_json::de::Deserializer<serde_json::de::StrRead<'_>> as serde::Deserializer<
+            '_,
+        >>::Error,
     > {
         let reader = serde_json::de::StrRead::new(s);
         let mut deserializer = serde_json::de::Deserializer::new(reader);
