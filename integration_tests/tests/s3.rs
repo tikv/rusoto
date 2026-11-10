@@ -50,10 +50,10 @@ struct TestS3Client {
 impl TestS3Client {
     // construct S3 testing client
     fn new(bucket_name: String) -> TestS3Client {
-        use hyper::client::HttpConnector;
-        use hyper_proxy::{Proxy, ProxyConnector, Intercept};
-        use rusoto_core::request::HttpClient;
+        use hyper_proxy::{Intercept, Proxy, ProxyConnector};
+        use hyper_util::client::legacy::connect::HttpConnector;
         use rusoto_core::credential::ChainProvider;
+        use rusoto_core::request::HttpClient;
     
         let region = if let Ok(endpoint) = env::var("S3_ENDPOINT") {
             let region = Region::Custom {

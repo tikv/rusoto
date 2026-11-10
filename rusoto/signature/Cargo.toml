@@ -26,7 +26,9 @@ digest = "0.9.0"
 futures = "0.3"
 hmac = "0.10"
 http = "0.2"
-hyper = { version = "0.14", features = ["stream"] }
+hyper = { version = "1" }
+http-body-util = "0.1"
+
 log = "0.4.1"
 md-5 = "0.9"
 base64 = "0.13"

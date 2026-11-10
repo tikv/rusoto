@@ -1,7 +1,8 @@
 //! The Credentials Provider for an AWS Resource's IAM Role.
 
+use crate::request::Body;
 use async_trait::async_trait;
-use hyper::{Body, Request, Uri};
+use hyper::{Request, Uri};
 use std::time::Duration;
 
 use crate::request::HttpClient;
@@ -160,7 +161,7 @@ async fn get_token(
             "X-aws-ec2-metadata-token-ttl-seconds",
             AWS_INSTANCE_METADATA_TOKEN_TTL_SECONDS,
         )
-        .body(Body::empty())
+        .body(Body::new())
         .map_err(|e| CredentialsError {
             message: format!("Could not create request for get token: {:?}", e),
         })?;

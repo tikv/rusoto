@@ -15,20 +15,24 @@ use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
 use futures::{FutureExt, StreamExt};
-use http::header::{HeaderName, HeaderValue};
-use http::{HeaderMap, Method, StatusCode};
-use hyper::client::connect::Connect;
-use hyper::client::Builder as HyperBuilder;
-use hyper::client::HttpConnector;
+use http::{HeaderMap, StatusCode};
+use http1::header::{HeaderName, HeaderValue};
+use http1::Method;
+use http_body_util::BodyExt;
 use hyper::Error as HyperError;
-use hyper::{Body, Client as HyperClient, Request as HyperRequest, Response as HyperResponse};
+use hyper::{Request as HyperRequest, Response as HyperResponse};
+use hyper_util::client::legacy::connect::Connect;
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::Builder as HyperBuilder;
+use hyper_util::client::legacy::Client as HyperClient;
+use hyper_util::rt::{TokioExecutor, TokioTimer};
 use lazy_static::lazy_static;
 use tokio::time;
 
 use log::Level::Debug;
 use log::*;
 
-use crate::signature::SignedRequest;
+use crate::signature::{Body, SignedRequest, SignedRequestPayload};
 use crate::stream::ByteStream;
 use crate::tls::HttpsConnector;
 
@@ -112,24 +116,30 @@ impl HttpResponse {
         })
     }
 
-    async fn from_hyper(hyper_response: HyperResponse<Body>) -> HttpResponse {
-        let status = hyper_response.status();
+    async fn from_hyper(hyper_response: HyperResponse<hyper::body::Incoming>) -> HttpResponse {
+        let status = StatusCode::from_u16(hyper_response.status().as_u16()).unwrap();
         let headers = hyper_response
             .headers()
             .iter()
             .map(|(h, v)| {
                 let value_string = v.to_str().unwrap().to_owned();
-                (h.clone(), value_string)
-            })
-            .collect();
-        let body = hyper_response.into_body().map(|try_chunk| {
-            try_chunk.map(|c| c).map_err(|e| {
-                IoError::new(
-                    io::ErrorKind::Other,
-                    format!("Error obtaining chunk: {}", e),
+                (
+                    http::header::HeaderName::from_bytes(h.as_str().as_bytes()).unwrap(),
+                    value_string,
                 )
             })
-        });
+            .collect();
+        let body = hyper_response
+            .into_body()
+            .into_data_stream()
+            .map(|try_chunk| {
+                try_chunk.map_err(|e| {
+                    IoError::new(
+                        io::ErrorKind::Other,
+                        format!("Error obtaining chunk: {:?}", e),
+                    )
+                })
+            });
 
         HttpResponse {
             status,
@@ -162,8 +172,9 @@ impl fmt::Display for HttpDispatchError {
 
 impl From<HyperError> for HttpDispatchError {
     fn from(err: HyperError) -> HttpDispatchError {
+        // Hyper 1 Display omits the source; Debug retains the cause for diagnostics.
         HttpDispatchError {
-            message: err.to_string(),
+            message: format!("{:?}", err),
         }
     }
 }
@@ -220,13 +231,7 @@ pub struct HttpClient<C = HttpsConnector<HttpConnector>> {
 impl HttpClient {
     /// Create a tls-enabled http client.
     pub fn new() -> Result<Self, TlsError> {
-        #[cfg(feature = "native-tls")]
-        let connector = HttpsConnector::new();
-
-        #[cfg(feature = "rustls")]
-        let connector = HttpsConnector::with_native_roots();
-
-        Ok(Self::from_connector(connector))
+        Self::new_with_config(HttpConfig::new())
     }
 
     /// Create a tls-enabled http client.
@@ -235,7 +240,15 @@ impl HttpClient {
         let connector = HttpsConnector::new();
 
         #[cfg(feature = "rustls")]
-        let connector = HttpsConnector::with_native_roots();
+        let connector = hyper_rustls::HttpsConnectorBuilder::new()
+            .with_provider_and_native_roots(rustls::crypto::ring::default_provider())
+            .map_err(|error| TlsError {
+                message: error.to_string(),
+            })?
+            .https_or_http()
+            .enable_http1()
+            .enable_http2()
+            .build();
 
         Ok(Self::from_connector_with_config(connector, config))
     }
@@ -262,9 +275,12 @@ impl<C> HttpClient<C>
 where
     C: Connect + Clone + Send + Sync,
 {
-    /// Allows for a custom connector to be used with the HttpClient
+    /// Allows for a custom Hyper 1 connector to be used with the HttpClient.
+    /// Connectors use `hyper_util::client::legacy::connect::Connect`.
     pub fn from_connector(connector: C) -> Self {
-        let inner = HyperClient::builder().build(connector);
+        let inner = HyperClient::builder(TokioExecutor::new())
+            .pool_timer(TokioTimer::new())
+            .build(connector);
         HttpClient {
             inner,
             local_agent_prepend: None,
@@ -275,7 +291,8 @@ where
     /// Allows for a custom connector to be used with the HttpClient
     /// with extra configuration options
     pub fn from_connector_with_config(connector: C, config: HttpConfig) -> Self {
-        let mut builder = HyperClient::builder();
+        let mut builder = HyperClient::builder(TokioExecutor::new());
+        builder.pool_timer(TokioTimer::new());
         config
             .read_buf_size
             .map(|sz| builder.http1_read_buf_exact_size(sz));
@@ -291,7 +308,7 @@ where
         }
     }
 
-    /// Alows for a custom builder and connector to be used with the HttpClient
+    /// Uses a Hyper 1 connector and a `hyper_util::client::legacy::Builder`.
     pub fn from_builder(builder: HyperBuilder, connector: C) -> Self {
         let inner = builder.build(connector);
         HttpClient {
@@ -366,7 +383,7 @@ where
     };
 
     // translate the headers map to a format Hyper likes
-    let mut hyper_headers = HeaderMap::new();
+    let mut hyper_headers = http1::HeaderMap::new();
     for h in request.headers().iter() {
         let header_name = match h.0.parse::<HeaderName>() {
             Ok(name) => name,
@@ -419,7 +436,7 @@ where
     let try_http_request = if let Some(p) = request.payload {
         http_request_builder.body(p.into_body())
     } else {
-        http_request_builder.body(Body::empty())
+        http_request_builder.body(SignedRequestPayload::Buffer(Bytes::new()).into_body())
     };
 
     let mut http_request = try_http_request.map_err(|err| HttpDispatchError {
@@ -441,8 +458,9 @@ where
             Ok(try_req) => try_req,
         },
     };
+    // Hyper-util Display omits connection and TLS causes; preserve them in Debug.
     let resp = try_resp.map_err(|e| HttpDispatchError {
-        message: format!("Error during dispatch: {}", e),
+        message: format!("Error during dispatch: {:?}", e),
     })?;
     Ok(HttpResponse::from_hyper(resp).await)
 }
@@ -568,5 +586,292 @@ mod tests {
             format!("{} after", base).parse::<HeaderValue>().unwrap(),
             build_user_agent(&None, &Some("after".to_string()))
         );
+    }
+
+    async fn check_streamed_request_and_response(http2: bool) {
+        use http_body_util::StreamBody;
+        use hyper::body::Frame;
+        use hyper::service::service_fn;
+        use hyper_util::rt::TokioIo;
+        use std::convert::Infallible;
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let service = service_fn(|request: HyperRequest<hyper::body::Incoming>| async move {
+                assert_eq!(request.method(), Method::PUT);
+                assert_eq!(request.uri().path(), "/object");
+                let data = request.into_body().collect().await.unwrap().to_bytes();
+                assert_eq!(data, "upload-body");
+                let mut trailers = http1::HeaderMap::new();
+                trailers.insert("x-checksum", HeaderValue::from_static("done"));
+                let frames = vec![
+                    Ok::<_, Infallible>(Frame::data(Bytes::from_static(b"first-"))),
+                    Ok(Frame::data(Bytes::from_static(b"second"))),
+                    Ok(Frame::trailers(trailers)),
+                ];
+                Ok::<_, Infallible>(
+                    HyperResponse::builder()
+                        .status(206)
+                        .header("x-response", "present")
+                        .header("trailer", "x-checksum")
+                        .body(StreamBody::new(futures::stream::iter(frames)))
+                        .unwrap(),
+                )
+            });
+            let stream = TokioIo::new(stream);
+            if http2 {
+                hyper::server::conn::http2::Builder::new(TokioExecutor::new())
+                    .serve_connection(stream, service)
+                    .await
+            } else {
+                hyper::server::conn::http1::Builder::new()
+                    .serve_connection(stream, service)
+                    .await
+            }
+        });
+        let mut builder = HyperClient::builder(TokioExecutor::new());
+        builder.http2_only(http2).pool_timer(TokioTimer::new());
+        let client = HttpClient::from_builder(builder, HttpConnector::new());
+        let region = Region::Custom {
+            name: "test".into(),
+            endpoint,
+        };
+        let mut request = SignedRequest::new("PUT", "s3", &region, "/object");
+        request.set_payload_stream(ByteStream::new(futures::stream::iter(vec![
+            Ok(Bytes::from_static(b"upload-")),
+            Ok(Bytes::from_static(b"body")),
+        ])));
+        let mut response = client
+            .dispatch(request, Some(Duration::from_secs(5)))
+            .await
+            .unwrap();
+        assert_eq!(response.status, StatusCode::PARTIAL_CONTENT);
+        assert_eq!(response.headers.get("x-response").unwrap(), "present");
+        assert_eq!(response.buffer().await.unwrap().body, "first-second");
+        server.abort();
+        let _ = server.await;
+    }
+
+    #[tokio::test]
+    async fn http1_streams_payload_and_response_frames() {
+        check_streamed_request_and_response(false).await;
+    }
+
+    #[tokio::test]
+    async fn http2_streams_payload_and_response_frames() {
+        check_streamed_request_and_response(true).await;
+    }
+
+    #[tokio::test]
+    async fn dispatch_timeout_covers_waiting_for_response() {
+        use tokio::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let region = Region::Custom {
+            name: "test".into(),
+            endpoint: format!("http://{}", listener.local_addr().unwrap()),
+        };
+        let server = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.unwrap();
+            futures::future::pending::<()>().await;
+        });
+        let mut config = HttpConfig::new();
+        config.read_buf_size(256 * 1024);
+        config.pool_idle_timeout(Some(Duration::from_secs(1)));
+        let client = HttpClient::new_with_config(config).unwrap();
+        let request = SignedRequest::new("GET", "s3", &region, "/object");
+        let error = client
+            .dispatch(request, Some(Duration::from_millis(50)))
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.to_string(), "Timeout while dispatching request");
+        server.abort();
+        let _ = server.await;
+    }
+
+    #[tokio::test]
+    async fn dispatch_error_preserves_dns_failure_cause() {
+        use hyper_util::client::legacy::connect::dns::Name;
+        use std::net::SocketAddr;
+        use std::task::{Context, Poll};
+        use tower_service::Service;
+
+        #[derive(Clone)]
+        struct FailingResolver;
+
+        impl Service<Name> for FailingResolver {
+            type Response = std::iter::Empty<SocketAddr>;
+            type Error = IoError;
+            type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+
+            fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+
+            fn call(&mut self, _: Name) -> Self::Future {
+                futures::future::ready(Err(IoError::other("sentinel DNS failure")))
+            }
+        }
+
+        let client = HttpClient::from_connector(HttpConnector::new_with_resolver(FailingResolver));
+        let region = Region::Custom {
+            name: "test".into(),
+            endpoint: "http://sentinel.invalid".into(),
+        };
+        let request = SignedRequest::new("GET", "s3", &region, "/object");
+        let error = client
+            .dispatch(request, Some(Duration::from_secs(5)))
+            .await
+            .err()
+            .unwrap();
+        assert!(
+            error.to_string().contains("sentinel DNS failure"),
+            "{}",
+            error
+        );
+    }
+
+    #[tokio::test]
+    async fn truncated_response_preserves_body_error() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let region = Region::Custom {
+            name: "test".into(),
+            endpoint: format!("http://{}", listener.local_addr().unwrap()),
+        };
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buf = [0; 256];
+            while !request.ends_with(b"\r\n\r\n") {
+                let read = stream.read(&mut buf).await.unwrap();
+                assert_ne!(read, 0);
+                request.extend_from_slice(&buf[..read]);
+            }
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nshort",
+                )
+                .await
+                .unwrap();
+            stream.shutdown().await.unwrap();
+        });
+        let client = HttpClient::from_connector(HttpConnector::new());
+        let request = SignedRequest::new("GET", "s3", &region, "/object");
+        let mut response = client
+            .dispatch(request, Some(Duration::from_secs(5)))
+            .await
+            .unwrap();
+        let error = response.buffer().await.err().unwrap();
+        assert!(error.to_string().contains("IncompleteBody"), "{}", error);
+        server.await.unwrap();
+    }
+
+    async fn check_https_certificate(trusted: bool, matching_name: bool) -> bool {
+        use http_body_util::Full;
+        use hyper::service::service_fn;
+        use hyper_util::rt::TokioIo;
+        use rcgen::{generate_simple_self_signed, CertifiedKey};
+        use rustls::pki_types::PrivatePkcs8KeyDer;
+        use tokio::net::TcpListener;
+
+        let CertifiedKey { cert, signing_key } =
+            generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let server_config = rustls::ServerConfig::builder_with_provider(provider.clone())
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![cert.der().clone()],
+                PrivatePkcs8KeyDer::from(signing_key.serialize_der()).into(),
+            )
+            .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let host = if matching_name {
+            "localhost"
+        } else {
+            "127.0.0.1"
+        };
+        let endpoint = format!("https://{}:{}", host, listener.local_addr().unwrap().port());
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
+            if let Ok(stream) = acceptor.accept(stream).await {
+                let service = service_fn(|_| async {
+                    Ok::<_, std::convert::Infallible>(HyperResponse::new(Full::new(
+                        Bytes::from_static(b"verified"),
+                    )))
+                });
+                let _ = hyper::server::conn::http1::Builder::new()
+                    .serve_connection(TokioIo::new(stream), service)
+                    .await;
+            }
+        });
+        #[cfg(feature = "native-tls")]
+        let connector = {
+            let mut tls = hyper_tls::native_tls::TlsConnector::builder();
+            if trusted {
+                tls.add_root_certificate(
+                    hyper_tls::native_tls::Certificate::from_der(cert.der()).unwrap(),
+                );
+            }
+            let mut http = HttpConnector::new();
+            http.enforce_http(false);
+            HttpsConnector::from((http, tls.build().unwrap().into()))
+        };
+        #[cfg(feature = "rustls")]
+        let connector = {
+            let mut roots = rustls::RootCertStore::empty();
+            if trusted {
+                roots.add(cert.der().clone()).unwrap();
+            }
+            let config = rustls::ClientConfig::builder_with_provider(provider)
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_root_certificates(roots)
+                .with_no_client_auth();
+            hyper_rustls::HttpsConnectorBuilder::new()
+                .with_tls_config(config)
+                .https_only()
+                .enable_http1()
+                .build()
+        };
+        let client = HttpClient::from_connector(connector);
+        let region = Region::Custom {
+            name: "test".into(),
+            endpoint,
+        };
+        let request = SignedRequest::new("GET", "s3", &region, "/object");
+        let result = client.dispatch(request, Some(Duration::from_secs(5))).await;
+        let success = match result {
+            Ok(mut response) => {
+                assert_eq!(response.buffer().await.unwrap().body, "verified");
+                true
+            }
+            Err(_) => false,
+        };
+        server.abort();
+        let _ = server.await;
+        success
+    }
+
+    #[tokio::test]
+    async fn https_accepts_trusted_certificate() {
+        assert!(check_https_certificate(true, true).await);
+    }
+
+    #[tokio::test]
+    async fn https_rejects_untrusted_certificate() {
+        assert!(!check_https_certificate(false, true).await);
+    }
+
+    #[tokio::test]
+    async fn https_rejects_wrong_hostname() {
+        assert!(!check_https_certificate(true, false).await);
     }
 }

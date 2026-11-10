@@ -214,6 +214,16 @@ impl From<IoError> for CredentialsError {
 
 impl From<HyperError> for CredentialsError {
     fn from(err: HyperError) -> CredentialsError {
+        // Hyper 1 Display omits the source; retain it for credential failure diagnostics.
+        CredentialsError::new(format!(
+            "Couldn't connect to credentials provider: {:?}",
+            err
+        ))
+    }
+}
+
+impl From<hyper014::Error> for CredentialsError {
+    fn from(err: hyper014::Error) -> CredentialsError {
         CredentialsError::new(format!("Couldn't connect to credentials provider: {}", err))
     }
 }

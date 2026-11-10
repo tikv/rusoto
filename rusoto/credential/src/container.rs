@@ -2,8 +2,9 @@
 
 use std::time::Duration;
 
+use crate::request::Body;
 use async_trait::async_trait;
-use hyper::{Body, Request};
+use hyper::Request;
 
 use crate::request::HttpClient;
 use crate::{
@@ -128,7 +129,7 @@ fn request_from_env_vars() -> Result<Request<Body>, CredentialsError> {
 }
 
 fn new_request(uri: &str, env_var_name: &str) -> Result<Request<Body>, CredentialsError> {
-    Request::get(uri).body(Body::empty()).map_err(|error| {
+    Request::get(uri).body(Body::new()).map_err(|error| {
         CredentialsError::new(format!(
             "Error while parsing URI '{}' derived from environment variable '{}': {}",
             uri, env_var_name, error
