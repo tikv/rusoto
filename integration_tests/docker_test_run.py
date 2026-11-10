@@ -8,11 +8,12 @@ import textwrap
 
 
 class Docker:
-    def __init__(self, image, run_opts, run_args, port):
+    def __init__(self, image, run_opts, run_args, port, health_path=None):
         self.image = image
         self.run_opts= run_opts
         self.run_args = run_args
         self.port = port
+        self.health_path = health_path
         self.container = None
 
     def __enter__(self):
@@ -32,13 +33,23 @@ class Docker:
         self._kill()
 
     def _wait_for_s3(self):
-        while True:
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
             time.sleep(1)
             try:
-                requests.get("http://localhost:{}".format(self.port))
-                break
-            except requests.exceptions.ConnectionError:
-                print("waiting for container to become ready", self)
+                response = requests.get(
+                    "http://localhost:{}{}".format(self.port, self.health_path or "/"),
+                    timeout=5,
+                )
+                # Legacy services can return an authentication error at the root.
+                # An explicit readiness endpoint must return success.
+                if self.health_path is None or response.status_code == 200:
+                    break
+            except requests.exceptions.RequestException:
+                pass
+            print("waiting for container to become ready", self)
+        else:
+            raise TimeoutError("Timed out waiting for S3 service: {}".format(self))
 
         print("container ready, waiting another 5 seconds to ensure everything is set up")
         time.sleep(5)
@@ -82,6 +93,9 @@ def parse_args(args):
     parser.add_argument("--port", type=int, default=80,
                         help="Port on which the service is going to be listening. Command is only executed once the "
                              "port (default %(default)s) returns a valid HTTP response.")
+    parser.add_argument("--health-path", default=None,
+                        help="Readiness URL path that must return HTTP 200. Defaults to accepting "
+                             "any response from the service root for legacy S3 services.")
     parser.add_argument("command", help="Command to execute.")
     parser.add_argument("args", nargs="*", help="Arguments passed to command. May be given multiple times.")
     return parser.parse_args(args[1:])
@@ -91,7 +105,13 @@ def main():
     args = parse_args(sys.argv)
     rc = 0
     for image in args.docker_images:
-        with Docker(image=image, run_opts=args.docker_run_opts, run_args=args.docker_run_args, port=args.port) as docker:
+        with Docker(
+            image=image,
+            run_opts=args.docker_run_opts,
+            run_args=args.docker_run_args,
+            port=args.port,
+            health_path=args.health_path,
+        ) as docker:
             if subprocess.call([args.command] + ['--' if i == '----' else i for i in args.args]) != 0:
                 if sys.stdout.isatty():
                     print('\033[31m', end='')

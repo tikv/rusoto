@@ -20,7 +20,7 @@ There will be a lot of tests in the cargo test output. To limit this output when
 cargo test --features "amplify ram" --test amplify --test ram -- --nocapture
 ```
 
-#### Running S3 tests against Minio or Ceph
+#### Running S3 tests against RustFS or Ceph
 
 Dependencies:
 * [Docker](https://docs.docker.com/install/)
@@ -28,4 +28,9 @@ Dependencies:
 * Python3 library requests (e.g. `apt install python3-requests` or `pip3 install --user requests`)
 
 **Ceph**: Execute `../ci/test_10_ceph.sh` while you're in this directory.
-**Minio**: Execute `../ci/test_20_minio.sh` while you're in this directory
+**RustFS**: Execute `../ci/test_20_rustfs.sh` for virtual-hosted-style addressing or
+`../ci/test_21_rustfs_path_style.sh` for path-style addressing. Both use
+`ghcr.io/rustfs/rustfs:1.0.4`. Set `S3_TEST_PORT` to use a host port other than 9000.
+
+RustFS runs CORS checks, but ACL assertions are disabled because it does not
+enforce S3 ACL-based authorization.
