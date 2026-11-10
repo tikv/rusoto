@@ -50,10 +50,10 @@ struct TestS3Client {
 impl TestS3Client {
     // construct S3 testing client
     fn new(bucket_name: String) -> TestS3Client {
-        use hyper::client::HttpConnector;
-        use hyper_proxy::{Proxy, ProxyConnector, Intercept};
-        use rusoto_core::request::HttpClient;
+        use hyper_proxy::{Intercept, Proxy, ProxyConnector};
+        use hyper_util::client::legacy::connect::HttpConnector;
         use rusoto_core::credential::ChainProvider;
+        use rusoto_core::request::HttpClient;
     
         let region = if let Ok(endpoint) = env::var("S3_ENDPOINT") {
             let region = Region::Custom {
@@ -107,9 +107,9 @@ impl TestS3Client {
 
     // construct an anonymous client for testing acls
     async fn create_anonymous_client(&self) -> S3Client {
-        if cfg!(feature = "disable_minio_unsupported") {
-            // Minio does not support setting acls, so to make tests pass, return a client that has
-            // the credentials of the bucket owner.
+        if cfg!(feature = "disable_s3_acl_tests") {
+            // Some S3-compatible services do not enforce ACLs. Use the bucket owner
+            // for the remaining object checks when ACL assertions are disabled.
             self.s3.clone()
         } else {
             S3Client::new_with(
@@ -331,9 +331,13 @@ async fn test_puts_gets_deletes() {
     // HEAD the object that was PUT
     test_head_object(&ro_s3client, &test_client.bucket_name, &filename).await;
 
-    if cfg!(not(feature = "disable_minio_unsupported")) {
+    if cfg!(not(feature = "disable_s3_acl_tests")) {
         // HEAD the object that cannot be read, should return 403
-        assert!(try_head_object(&ro_s3client, &test_client.bucket_name, &filename2).await.is_err());
+        assert!(
+            try_head_object(&ro_s3client, &test_client.bucket_name, &filename2)
+                .await
+                .is_err()
+        );
     }
 
     // ... but it can be as the original owner

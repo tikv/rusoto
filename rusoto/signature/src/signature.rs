@@ -19,13 +19,16 @@ use std::time::Duration;
 
 use base64;
 use bytes::Bytes;
-use chrono::{DateTime, Utc, NaiveDate};
+use chrono::{DateTime, NaiveDate, Utc};
 use digest::Digest;
+use futures::TryStreamExt;
 use hex;
 use hmac::{Hmac, Mac, NewMac};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
-use hyper::Body;
+use http_body_util::{BodyExt, Full, StreamBody};
+use hyper::body::Frame;
+
 use log::{debug, log_enabled, Level::Debug};
 use md5::Md5;
 use percent_encoding::{percent_decode, utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
@@ -34,6 +37,10 @@ use sha2::Sha256;
 use crate::credential::AwsCredentials;
 use crate::region::Region;
 use crate::stream::ByteStream;
+
+/// A Hyper 1 request body carrying buffered bytes or a streaming upload.
+/// Buffered payloads retain their exact length; streaming IO errors are preserved.
+pub type Body = http_body_util::combinators::UnsyncBoxBody<Bytes, std::io::Error>;
 
 pub type Params = BTreeMap<String, Option<String>>;
 
@@ -52,11 +59,15 @@ pub enum SignedRequestPayload {
 }
 
 impl SignedRequestPayload {
-    /// Convert `SignedRequestPayload` into a hyper `Body`
+    /// Converts the payload into a Hyper 1 request body.
     pub fn into_body(self) -> Body {
         match self {
-            SignedRequestPayload::Buffer(bytes) => Body::from(bytes),
-            SignedRequestPayload::Stream(stream) => Body::wrap_stream(stream),
+            SignedRequestPayload::Buffer(bytes) => Full::new(bytes)
+                .map_err(|never| match never {})
+                .boxed_unsync(),
+            SignedRequestPayload::Stream(stream) => {
+                StreamBody::new(stream.map_ok(Frame::data)).boxed_unsync()
+            }
         }
     }
 }
@@ -218,8 +229,12 @@ impl SignedRequest {
             "organizations" => {
                 // Matches https://docs.aws.amazon.com/general/latest/gr/ao.html
                 match self.region {
-                    Region::CnNorth1 | Region::CnNorthwest1 => Region::CnNorthwest1.name().to_string(),
-                    Region::UsGovEast1 | Region::UsGovWest1 => Region::UsGovWest1.name().to_string(),
+                    Region::CnNorth1 | Region::CnNorthwest1 => {
+                        Region::CnNorthwest1.name().to_string()
+                    }
+                    Region::UsGovEast1 | Region::UsGovWest1 => {
+                        Region::UsGovWest1.name().to_string()
+                    }
                     _ => Region::UsEast1.name().to_string(),
                 }
             }
@@ -562,14 +577,10 @@ impl TryInto<Request<Body>> for SignedRequest {
 
         let builder = Request::builder().method(method).uri(final_uri);
 
-        let body = if let Some(payload) = self.payload {
-            match payload {
-                SignedRequestPayload::Buffer(bytes) => Body::from(bytes),
-                SignedRequestPayload::Stream(stream) => Body::wrap_stream(stream),
-            }
-        } else {
-            Body::empty()
-        };
+        let body = self
+            .payload
+            .unwrap_or_else(|| SignedRequestPayload::Buffer(Bytes::new()))
+            .into_body();
         let mut request = builder.body(body)?;
 
         *request.headers_mut() = headers;
@@ -793,8 +804,12 @@ fn build_hostname(service: &str, region: &Region) -> String {
         "organizations" => match *region {
             // organizations is routed specially: see https://docs.aws.amazon.com/organizations/latest/APIReference/Welcome.html and https://docs.aws.amazon.com/general/latest/gr/ao.html
             Region::Custom { ref endpoint, .. } => extract_hostname(endpoint).to_owned(),
-            Region::CnNorth1 | Region::CnNorthwest1 => "organizations.cn-northwest-1.amazonaws.com.cn".to_owned(),
-            Region::UsGovEast1 | Region::UsGovWest1 => "organizations.us-gov-west-1.amazonaws.com".to_owned(),
+            Region::CnNorth1 | Region::CnNorthwest1 => {
+                "organizations.cn-northwest-1.amazonaws.com.cn".to_owned()
+            }
+            Region::UsGovEast1 | Region::UsGovWest1 => {
+                "organizations.us-gov-west-1.amazonaws.com".to_owned()
+            }
             _ => "organizations.us-east-1.amazonaws.com".to_owned(),
         },
         "iam" => match *region {
@@ -1109,5 +1124,47 @@ mod tests {
         // we want to check that "x-amz-content-sha256" header is signed
         // and "authorization" header includes all signed headers
         assert!(authorization_header.contains("x-amz-content-sha256"));
+    }
+
+    #[tokio::test]
+    async fn buffered_body_preserves_exact_length_and_bytes() {
+        use hyper::body::Body as _;
+        let body = SignedRequestPayload::Buffer(Bytes::from_static(b"payload")).into_body();
+        assert_eq!(body.size_hint().exact(), Some(7));
+        assert_eq!(body.collect().await.unwrap().to_bytes(), "payload");
+    }
+
+    #[tokio::test]
+    async fn streaming_body_preserves_chunks_and_io_errors() {
+        let source = futures::stream::iter(vec![
+            Ok(Bytes::from_static(b"first")),
+            Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "upload failed",
+            )),
+        ]);
+        let mut body = SignedRequestPayload::Stream(ByteStream::new(source)).into_body();
+        assert_eq!(
+            body.frame().await.unwrap().unwrap().into_data().unwrap(),
+            "first"
+        );
+        let error = body.frame().await.unwrap().unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+        assert_eq!(error.to_string(), "upload failed");
+    }
+
+    #[tokio::test]
+    async fn converted_request_without_payload_has_empty_body() {
+        use hyper::body::Body as _;
+        let request = SignedRequest::new("GET", "s3", &Region::UsEast1, "/object");
+        let request: http::Request<Body> = request.try_into().unwrap();
+        assert_eq!(request.body().size_hint().exact(), Some(0));
+        assert!(request
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .is_empty());
     }
 }

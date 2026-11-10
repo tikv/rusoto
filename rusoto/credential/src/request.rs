@@ -2,22 +2,28 @@ use std::io::Error as IoError;
 use std::io::ErrorKind;
 use std::time::Duration;
 
-use futures::StreamExt;
-use hyper::client::HttpConnector;
-use hyper::{Body, Client as HyperClient, Request, Uri};
+use http_body_util::{BodyExt, Empty};
+use hyper::{Request, Uri};
+use hyper_util::client::legacy::{connect::HttpConnector, Client as HyperClient};
+use hyper_util::rt::{TokioExecutor, TokioTimer};
 use tokio::time;
+
+/// The empty request body used by IMDS and ECS credential requests.
+pub type Body = Empty<hyper::body::Bytes>;
 
 /// Http client for use in a credentials provider.
 #[derive(Debug, Clone)]
 pub struct HttpClient {
-    inner: HyperClient<HttpConnector>,
+    inner: HyperClient<HttpConnector, Body>,
 }
 
 impl HttpClient {
     /// Create an http client.
     pub fn new() -> HttpClient {
         HttpClient {
-            inner: HyperClient::new(),
+            inner: HyperClient::builder(TokioExecutor::new())
+                .pool_timer(TokioTimer::new())
+                .build_http(),
         }
     }
 
@@ -31,7 +37,7 @@ impl HttpClient {
         if let Some(token) = ec2_metadata_token {
             builder = builder.header("X-aws-ec2-metadata-token", token);
         }
-        match builder.body(Body::empty()) {
+        match builder.body(Body::new()) {
             Ok(request) => self.request(request, timeout).await,
             Err(err) => Err(IoError::new(
                 ErrorKind::Other,
@@ -44,16 +50,20 @@ impl HttpClient {
         match time::timeout(timeout, self.inner.request(req)).await {
             Err(_elapsed) => Err(IoError::new(ErrorKind::TimedOut, "Request timed out")),
             Ok(try_resp) => {
+                // Hyper 1 and hyper-util Display omit causes; Debug preserves diagnostics.
                 let mut resp = try_resp.map_err(|err| {
-                    IoError::new(ErrorKind::Other, format!("Response failed: {}", err))
+                    IoError::new(ErrorKind::Other, format!("Response failed: {:?}", err))
                 })?;
                 let body = resp.body_mut();
                 let mut text = vec![];
-                while let Some(chunk) = body.next().await {
-                    let chunk = chunk.map_err(|err| {
-                        IoError::new(ErrorKind::Other, format!("Could not get chunk: {}", err))
+                while let Some(frame) = body.frame().await {
+                    let frame = frame.map_err(|err| {
+                        IoError::new(ErrorKind::Other, format!("Could not get frame: {:?}", err))
                     })?;
-                    text.extend(chunk.to_vec());
+                    let Ok(chunk) = frame.into_data() else {
+                        continue;
+                    };
+                    text.extend_from_slice(&chunk);
                 }
                 let body_str = String::from_utf8(text)
                     .map_err(|_| IoError::new(ErrorKind::InvalidData, "Non UTF-8 Data returned"))?;

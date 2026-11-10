@@ -1,7 +1,7 @@
 # Additional CI tests
 
 This directory contains test scripts that run integration tests against
-Ceph and MinIO.
+Ceph and RustFS.
 
 These tests were historically run on [Semaphore CI](https://semaphoreci.com),
 but now run on GitHub Actions with the rest of the CI jobs.

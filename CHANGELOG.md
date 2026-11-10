@@ -5,6 +5,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Migrate HTTP transports to Hyper 1 and hyper-util, with hyper-tls 0.6 and
+  hyper-rustls 0.27; custom connectors/builders and signed request bodies now use
+  their Hyper 1 interfaces. Signed-request conversions retain HTTP 0.2 request
+  parts and require bridging for direct Hyper 1 use. The native-tls default and
+  HTTP 0.2 status/header boundaries remain unchanged.
+
 - Update to `serde_urlencoded` 0.7
 - Update to `rustc_version` 0.3
 - Replace `time`-related types in `rusoto_signature` with `chrono` types, to
